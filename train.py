@@ -9,14 +9,15 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader 
 import torchvision.models as models
 from torchvision import transforms
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 from emotic import Emotic 
 from emotic_dataset import Emotic_PreDataset
-from loss_classes import DiscreteLoss, ContinuousLoss_SL1, ContinuousLoss_L2
+from loss import DiscreteLoss, ContinuousLoss_SL1, ContinuousLoss_L2
 from prepare_models import prep_models
 from test import test_data
 
+from tqdm import tqdm
 
 def train_data(opt, scheduler, models, device, train_loader, val_loader, disc_loss, cont_loss, train_writer, val_writer, model_path, args):
     '''
@@ -41,6 +42,8 @@ def train_data(opt, scheduler, models, device, train_loader, val_loader, disc_lo
     model_context.to(device)
     model_body.to(device)
 
+    criterion = torch.nn.BCEWithLogitsLoss()
+    
     print ('starting training')
 
     for e in range(args.epochs):
@@ -54,7 +57,7 @@ def train_data(opt, scheduler, models, device, train_loader, val_loader, disc_lo
         model_body.train()
         
         #train models for one epoch 
-        for images_context, images_body, labels_cat, labels_cont in iter(train_loader):
+        for images_context, images_body, labels_cat, labels_cont in tqdm(iter(train_loader)):
             images_context = images_context.to(device)
             images_body = images_body.to(device)
             labels_cat = labels_cat.to(device)
@@ -66,7 +69,10 @@ def train_data(opt, scheduler, models, device, train_loader, val_loader, disc_lo
             pred_body = model_body(images_body)
 
             pred_cat, pred_cont = emotic_model(pred_context, pred_body)
-            cat_loss_batch = disc_loss(pred_cat, labels_cat)
+            
+            #  cat_loss_batch = disc_loss(pred_cat, labels_cat)
+            cat_loss_batch = criterion(pred_cat, labels_cat)
+            
             cont_loss_batch = cont_loss(pred_cont * 10, labels_cont * 10)
 
             loss = (args.cat_loss_weight * cat_loss_batch) + (args.cont_loss_weight * cont_loss_batch)
@@ -95,7 +101,7 @@ def train_data(opt, scheduler, models, device, train_loader, val_loader, disc_lo
         
         with torch.no_grad():
             #validation for one epoch
-            for images_context, images_body, labels_cat, labels_cont in iter(val_loader):
+            for images_context, images_body, labels_cat, labels_cont in tqdm(iter(val_loader)):
                 images_context = images_context.to(device)
                 images_body = images_body.to(device)
                 labels_cat = labels_cat.to(device)
@@ -105,7 +111,8 @@ def train_data(opt, scheduler, models, device, train_loader, val_loader, disc_lo
                 pred_body = model_body(images_body)
 
                 pred_cat, pred_cont = emotic_model(pred_context, pred_body)
-                cat_loss_batch = disc_loss(pred_cat, labels_cat)
+                cat_loss_batch = criterion(pred_cat, labels_cat)
+                # cat_loss_batch = disc_loss(pred_cat, labels_cat)
                 cont_loss_batch = cont_loss(pred_cont * 10, labels_cont * 10)
                 loss = (args.cat_loss_weight * cat_loss_batch) + (args.cont_loss_weight * cont_loss_batch)
                 
